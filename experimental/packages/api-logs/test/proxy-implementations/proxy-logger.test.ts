@@ -16,13 +16,10 @@
 
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import {
-  Logger,
-  LoggerProvider,
-  ProxyLogger,
-  ProxyLoggerProvider,
-} from '../../src';
+import { Logger, LoggerProvider } from '../../src';
 import { NoopLogger } from '../../src/NoopLogger';
+import { ProxyLogger } from '../../src/ProxyLogger';
+import { ProxyLoggerProvider } from '../../src/ProxyLoggerProvider';
 
 describe('ProxyLogger', () => {
   let provider: ProxyLoggerProvider;
@@ -52,7 +49,7 @@ describe('ProxyLogger', () => {
       delegate = {
         getLogger: getLoggerStub,
       };
-      provider.setDelegate(delegate);
+      provider._setDelegate(delegate);
     });
 
     it('should return loggers directly from the delegate', () => {
@@ -104,7 +101,7 @@ describe('ProxyLogger', () => {
           return delegateLogger;
         },
       };
-      provider.setDelegate(delegateProvider);
+      provider._setDelegate(delegateProvider);
     });
 
     it('should emit from the delegate logger', () => {

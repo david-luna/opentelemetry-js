@@ -19,6 +19,7 @@ import { otperformance as performance } from '../../src/platform';
 import * as sinon from 'sinon';
 import * as api from '@opentelemetry/api';
 import {
+  getTimeOrigin,
   hrTime,
   timeInputToHrTime,
   hrTimeDuration,
@@ -33,6 +34,13 @@ import {
 describe('time', () => {
   afterEach(() => {
     sinon.restore();
+  });
+
+  describe('#getTimeOrigin', () => {
+    it('should return performance.timeOrigin', () => {
+      sinon.stub(performance, 'timeOrigin').value(1234567890.123);
+      assert.strictEqual(getTimeOrigin(), 1234567890.123);
+    });
   });
 
   describe('#hrTime', () => {
@@ -83,23 +91,6 @@ describe('time', () => {
       const output = hrTime(null as any);
       assert.deepStrictEqual(output, [0, 22800000]);
     });
-
-    describe('when timeOrigin is not available', () => {
-      it('should use the performance.timing.fetchStart as a fallback', () => {
-        Object.defineProperty(performance, 'timing', {
-          writable: true,
-          value: {
-            fetchStart: 11.5,
-          },
-        });
-
-        sinon.stub(performance, 'timeOrigin').value(undefined);
-        sinon.stub(performance, 'now').callsFake(() => 11.3);
-
-        const output = hrTime();
-        assert.deepStrictEqual(output, [0, 22800000]);
-      });
-    });
   });
 
   describe('#timeInputToHrTime', () => {
@@ -122,7 +113,7 @@ describe('time', () => {
         [1609297640313, [1609297640, 313000000]],
         // inevitable precision loss without decimal arithmetics.
         [1609297640313.333, [1609297640, 313333008]],
-        // eslint-disable-next-line @typescript-eslint/no-loss-of-precision
+        // eslint-disable-next-line no-loss-of-precision
         [1609297640313.333333333, [1609297640, 313333252]],
       ] as const;
       for (const [idx, input] of inputs.entries()) {

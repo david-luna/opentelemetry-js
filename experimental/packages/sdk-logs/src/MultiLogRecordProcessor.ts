@@ -17,17 +17,22 @@
 import { callWithTimeout } from '@opentelemetry/core';
 import type { Context } from '@opentelemetry/api';
 import type { LogRecordProcessor } from './LogRecordProcessor';
-import type { LogRecord } from './LogRecord';
+import type { SdkLogRecord } from './export/SdkLogRecord';
 
 /**
  * Implementation of the {@link LogRecordProcessor} that simply forwards all
  * received events to a list of {@link LogRecordProcessor}s.
  */
 export class MultiLogRecordProcessor implements LogRecordProcessor {
+  public readonly processors: LogRecordProcessor[];
+  public readonly forceFlushTimeoutMillis: number;
   constructor(
-    public readonly processors: LogRecordProcessor[],
-    public readonly forceFlushTimeoutMillis: number
-  ) {}
+    processors: LogRecordProcessor[],
+    forceFlushTimeoutMillis: number
+  ) {
+    this.processors = processors;
+    this.forceFlushTimeoutMillis = forceFlushTimeoutMillis;
+  }
 
   public async forceFlush(): Promise<void> {
     const timeout = this.forceFlushTimeoutMillis;
@@ -38,7 +43,7 @@ export class MultiLogRecordProcessor implements LogRecordProcessor {
     );
   }
 
-  public onEmit(logRecord: LogRecord, context?: Context): void {
+  public onEmit(logRecord: SdkLogRecord, context?: Context): void {
     this.processors.forEach(processors =>
       processors.onEmit(logRecord, context)
     );

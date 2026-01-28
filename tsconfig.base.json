@@ -8,6 +8,7 @@
     "forceConsistentCasingInFileNames": true,
     "incremental": true,
     "inlineSources": true,
+    "isolatedModules": true,
     "module": "node16",
     "moduleResolution": "node16",
     "esModuleInterop": false,
@@ -25,9 +26,7 @@
     "target": "es2022",
     "useUnknownInCatchVariables": false,
     "lib": [
-      "es2022",
-      "dom",
-      "dom.iterable"
+      "es2022"
     ]
   },
   "exclude": [

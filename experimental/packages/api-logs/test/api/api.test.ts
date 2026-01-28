@@ -15,7 +15,8 @@
  */
 
 import * as assert from 'assert';
-import { Logger, ProxyLoggerProvider, logs } from '../../src';
+import { Logger, logs } from '../../src';
+import { ProxyLoggerProvider } from '../../src/ProxyLoggerProvider';
 import { NoopLogger } from '../../src/NoopLogger';
 import { NoopLoggerProvider } from '../../src/NoopLoggerProvider';
 
@@ -25,8 +26,9 @@ describe('API', () => {
   it('should expose a logger provider via getLoggerProvider', () => {
     assert.ok(logs.getLoggerProvider() instanceof ProxyLoggerProvider);
     assert.ok(
-      (logs.getLoggerProvider() as ProxyLoggerProvider).getDelegate() instanceof
-        NoopLoggerProvider
+      (
+        logs.getLoggerProvider() as ProxyLoggerProvider
+      )._getDelegate() instanceof NoopLoggerProvider
     );
   });
 

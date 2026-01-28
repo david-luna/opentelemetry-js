@@ -22,8 +22,8 @@ import {
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 
-import { LoggerProvider, NoopLogRecordProcessor } from '../../src';
-import { loadDefaultConfig } from '../../src/config';
+import { LoggerProvider } from '../../src';
+import { NoopLogRecordProcessor } from '../../src/export/NoopLogRecordProcessor';
 import { DEFAULT_LOGGER_NAME } from './../../src/LoggerProvider';
 import { MultiLogRecordProcessor } from '../../src/MultiLogRecordProcessor';
 import { Logger } from '../../src/Logger';
@@ -52,6 +52,22 @@ describe('LoggerProvider', () => {
         assert.ok(processor instanceof NoopLogRecordProcessor);
       });
 
+      it('should add logRecord processor', () => {
+        const logRecordProcessor = new NoopLogRecordProcessor();
+        const provider = new LoggerProvider({
+          processors: [logRecordProcessor],
+        });
+        const sharedState = provider['_sharedState'];
+        assert.ok(
+          sharedState.activeProcessor instanceof MultiLogRecordProcessor
+        );
+        assert.strictEqual(sharedState.activeProcessor.processors.length, 1);
+        assert.strictEqual(
+          sharedState.activeProcessor.processors[0],
+          logRecordProcessor
+        );
+      });
+
       it('should have default resource if not pass', () => {
         const provider = new LoggerProvider();
         const { resource } = provider['_sharedState'];
@@ -70,10 +86,7 @@ describe('LoggerProvider', () => {
       it('should have default forceFlushTimeoutMillis if not pass', () => {
         const provider = new LoggerProvider();
         const sharedState = provider['_sharedState'];
-        assert.ok(
-          sharedState.forceFlushTimeoutMillis ===
-            loadDefaultConfig().forceFlushTimeoutMillis
-        );
+        assert.ok(sharedState.forceFlushTimeoutMillis === 30_000);
       });
     });
 
@@ -201,21 +214,6 @@ describe('LoggerProvider', () => {
     });
   });
 
-  describe('addLogRecordProcessor', () => {
-    it('should add logRecord processor', () => {
-      const provider = new LoggerProvider();
-      const sharedState = provider['_sharedState'];
-      const logRecordProcessor = new NoopLogRecordProcessor();
-      provider.addLogRecordProcessor(logRecordProcessor);
-      assert.ok(sharedState.activeProcessor instanceof MultiLogRecordProcessor);
-      assert.strictEqual(sharedState.activeProcessor.processors.length, 1);
-      assert.strictEqual(
-        sharedState.activeProcessor.processors[0],
-        logRecordProcessor
-      );
-    });
-  });
-
   describe('.forceFlush()', () => {
     it('should call forceFlush on all registered log record processors', done => {
       sinon.restore();
@@ -225,12 +223,11 @@ describe('LoggerProvider', () => {
       );
       forceFlushStub.resolves();
 
-      const provider = new LoggerProvider();
       const logRecordProcessorOne = new NoopLogRecordProcessor();
       const logRecordProcessorTwo = new NoopLogRecordProcessor();
-
-      provider.addLogRecordProcessor(logRecordProcessorOne);
-      provider.addLogRecordProcessor(logRecordProcessorTwo);
+      const provider = new LoggerProvider({
+        processors: [logRecordProcessorOne, logRecordProcessorTwo],
+      });
 
       provider
         .forceFlush()
@@ -254,12 +251,11 @@ describe('LoggerProvider', () => {
       );
       forceFlushStub.returns(Promise.reject('Error'));
 
-      const provider = new LoggerProvider();
       const logRecordProcessorOne = new NoopLogRecordProcessor();
       const logRecordProcessorTwo = new NoopLogRecordProcessor();
-
-      provider.addLogRecordProcessor(logRecordProcessorOne);
-      provider.addLogRecordProcessor(logRecordProcessorTwo);
+      const provider = new LoggerProvider({
+        processors: [logRecordProcessorOne, logRecordProcessorTwo],
+      });
 
       provider
         .forceFlush()
@@ -277,9 +273,8 @@ describe('LoggerProvider', () => {
 
   describe('.shutdown()', () => {
     it('should trigger shutdown when manually invoked', () => {
-      const provider = new LoggerProvider();
       const processor = new NoopLogRecordProcessor();
-      provider.addLogRecordProcessor(processor);
+      const provider = new LoggerProvider({ processors: [processor] });
       const shutdownStub = sinon.stub(processor, 'shutdown');
       provider.shutdown();
       sinon.assert.calledOnce(shutdownStub);
@@ -294,9 +289,10 @@ describe('LoggerProvider', () => {
     });
 
     it('should not force flush on shutdown', () => {
-      const provider = new LoggerProvider();
       const logRecordProcessor = new NoopLogRecordProcessor();
-      provider.addLogRecordProcessor(logRecordProcessor);
+      const provider = new LoggerProvider({
+        processors: [logRecordProcessor],
+      });
       const forceFlushStub = sinon.stub(logRecordProcessor, 'forceFlush');
       const warnStub = sinon.spy(diag, 'warn');
       provider.shutdown();
@@ -306,9 +302,10 @@ describe('LoggerProvider', () => {
     });
 
     it('should not shutdown on shutdown', () => {
-      const provider = new LoggerProvider();
       const logRecordProcessor = new NoopLogRecordProcessor();
-      provider.addLogRecordProcessor(logRecordProcessor);
+      const provider = new LoggerProvider({
+        processors: [logRecordProcessor],
+      });
       const shutdownStub = sinon.stub(logRecordProcessor, 'shutdown');
       const warnStub = sinon.spy(diag, 'warn');
       provider.shutdown();

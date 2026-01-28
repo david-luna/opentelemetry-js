@@ -32,7 +32,6 @@ import {
 import {
   addHrTimes,
   millisToHrTime,
-  getTimeOrigin,
   hrTime,
   hrTimeDuration,
   InstrumentationScope,
@@ -44,9 +43,9 @@ import {
 } from '@opentelemetry/core';
 import { Resource } from '@opentelemetry/resources';
 import {
-  SEMATTRS_EXCEPTION_MESSAGE,
-  SEMATTRS_EXCEPTION_STACKTRACE,
-  SEMATTRS_EXCEPTION_TYPE,
+  ATTR_EXCEPTION_MESSAGE,
+  ATTR_EXCEPTION_STACKTRACE,
+  ATTR_EXCEPTION_TYPE,
 } from '@opentelemetry/semantic-conventions';
 import { ReadableSpan } from './export/ReadableSpan';
 import { ExceptionEventName } from './enums';
@@ -119,7 +118,7 @@ export class SpanImpl implements Span {
     this._spanContext = opts.spanContext;
     this._performanceStartTime = otperformance.now();
     this._performanceOffset =
-      now - (this._performanceStartTime + getTimeOrigin());
+      now - (this._performanceStartTime + otperformance.timeOrigin);
     this._startTimeProvided = opts.startTime != null;
     this._spanLimits = opts.spanLimits;
     this._attributeValueLengthLimit =
@@ -270,8 +269,6 @@ export class SpanImpl implements Span {
       );
       return;
     }
-    this._ended = true;
-
     this.endTime = this._getTime(endTime);
     this._duration = hrTimeDuration(this.startTime, this.endTime);
 
@@ -290,7 +287,11 @@ export class SpanImpl implements Span {
         `Dropped ${this._droppedEventsCount} events because eventCountLimit reached`
       );
     }
+    if (this._spanProcessor.onEnding) {
+      this._spanProcessor.onEnding(this);
+    }
 
+    this._ended = true;
     this._spanProcessor.onEnd(this);
   }
 
@@ -330,26 +331,23 @@ export class SpanImpl implements Span {
   recordException(exception: Exception, time?: TimeInput): void {
     const attributes: Attributes = {};
     if (typeof exception === 'string') {
-      attributes[SEMATTRS_EXCEPTION_MESSAGE] = exception;
+      attributes[ATTR_EXCEPTION_MESSAGE] = exception;
     } else if (exception) {
       if (exception.code) {
-        attributes[SEMATTRS_EXCEPTION_TYPE] = exception.code.toString();
+        attributes[ATTR_EXCEPTION_TYPE] = exception.code.toString();
       } else if (exception.name) {
-        attributes[SEMATTRS_EXCEPTION_TYPE] = exception.name;
+        attributes[ATTR_EXCEPTION_TYPE] = exception.name;
       }
       if (exception.message) {
-        attributes[SEMATTRS_EXCEPTION_MESSAGE] = exception.message;
+        attributes[ATTR_EXCEPTION_MESSAGE] = exception.message;
       }
       if (exception.stack) {
-        attributes[SEMATTRS_EXCEPTION_STACKTRACE] = exception.stack;
+        attributes[ATTR_EXCEPTION_STACKTRACE] = exception.stack;
       }
     }
 
     // these are minimum requirements from spec
-    if (
-      attributes[SEMATTRS_EXCEPTION_TYPE] ||
-      attributes[SEMATTRS_EXCEPTION_MESSAGE]
-    ) {
+    if (attributes[ATTR_EXCEPTION_TYPE] || attributes[ATTR_EXCEPTION_MESSAGE]) {
       this.addEvent(ExceptionEventName, attributes, time);
     } else {
       diag.warn(`Failed to record an exception ${exception}`);

@@ -31,19 +31,22 @@ import {
   InMemoryLogRecordExporter,
   LogRecordExporter,
   SimpleLogRecordProcessor,
-  LogRecord,
 } from './../../../src';
 import { LoggerProviderSharedState } from '../../../src/internal/LoggerProviderSharedState';
-import { reconfigureLimits } from '../../../src/config';
 import { TestExporterWithDelay } from './TestExporterWithDelay';
+import { LogRecordImpl } from '../../../src/LogRecordImpl';
 
 const setup = (exporter: LogRecordExporter, resource?: Resource) => {
   const sharedState = new LoggerProviderSharedState(
     resource || defaultResource(),
     Infinity,
-    reconfigureLimits({})
+    {
+      attributeCountLimit: 128,
+      attributeValueLengthLimit: Infinity,
+    },
+    []
   );
-  const logRecord = new LogRecord(
+  const logRecord = new LogRecordImpl(
     sharedState,
     {
       name: 'test name',

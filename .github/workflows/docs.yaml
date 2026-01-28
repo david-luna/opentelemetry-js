@@ -1,29 +1,31 @@
 name: Deploy API Documentation
 
-# Disable API doc updates from "main" while "main" is frozen for https://github.com/open-telemetry/opentelemetry-js/milestone/17
-# TODO: renable this once ready for releases from "main" again.
-# on:
-#   release:
-#     types: [published]
-on: []
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
 
 jobs:
   build-and-deploy:
+    permissions:
+      contents: write # required for deploying documentation to gh-pages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
         with:
           cache: 'npm'
           cache-dependency-path: |
             package-lock.json
-          node-version: '20'
+          node-version: '22'
 
       - name: Install and Build 🔧
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npm run compile
 
       - name: Build Docs

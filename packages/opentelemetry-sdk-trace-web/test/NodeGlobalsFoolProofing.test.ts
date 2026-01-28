@@ -14,18 +14,16 @@
  * limitations under the License.
  */
 
-import {
-  context,
-  propagation,
-  trace,
-  ProxyTracerProvider,
-} from '@opentelemetry/api';
+import { context, propagation, trace } from '@opentelemetry/api';
 import * as assert from 'assert';
+import * as sinon from 'sinon';
 import { StackContextManager, WebTracerProvider } from '../src';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 
-describe('Node Globals Foolproofing', () => {
+describe('Node Globals Foolproofing', function () {
   const originalProcess = globalThis?.process;
+  let setGlobalTracerProviderSpy: sinon.SinonSpy;
+
   before(() => {
     Object.assign(globalThis, { process: false });
   });
@@ -38,9 +36,14 @@ describe('Node Globals Foolproofing', () => {
     context.disable();
     trace.disable();
     propagation.disable();
+    setGlobalTracerProviderSpy = sinon.spy(trace, 'setGlobalTracerProvider');
   });
 
-  it('Can get TraceProvider without node globals such as process', () => {
+  afterEach(() => {
+    sinon.restore();
+  });
+
+  it('Can get TraceProvider without node globals such as process', function () {
     const propagator = propagation['_getGlobalPropagator']();
     const tracerProvider = new WebTracerProvider();
     tracerProvider.register({
@@ -54,11 +57,13 @@ describe('Node Globals Foolproofing', () => {
     );
 
     assert.ok(context['_getContextManager']() instanceof StackContextManager);
-    const apiTracerProvider = trace.getTracerProvider() as ProxyTracerProvider;
-    assert.ok(apiTracerProvider.getDelegate() === tracerProvider);
+    sinon.assert.calledOnceWithMatch(
+      setGlobalTracerProviderSpy,
+      (provider: any) => provider === tracerProvider
+    );
   });
 
-  it('Can get TraceProvider with custom id generator and without node globals such as process', () => {
+  it('Can get TraceProvider with custom id generator and without node globals such as process', function () {
     const getRandomString = (length: number) => {
       const alphanumericsList = 'abcdefghijklmnopqrstuvwxyz0123456789'.split(
         ''

@@ -22,12 +22,8 @@ import {
   diag,
 } from '@opentelemetry/api';
 import {
-  SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH,
-  SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
-  SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
-  SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
-  SEMATTRS_HTTP_ROUTE,
-  SEMATTRS_HTTP_TARGET,
+  ATTR_HTTP_ROUTE,
+  ATTR_USER_AGENT_ORIGINAL,
 } from '@opentelemetry/semantic-conventions';
 import * as assert from 'assert';
 import { IncomingMessage, ServerResponse } from 'http';
@@ -35,15 +31,22 @@ import { Socket } from 'net';
 import * as sinon from 'sinon';
 import * as url from 'url';
 import {
-  IgnoreMatcher,
-  ParsedRequestOptions,
-  SemconvStability,
-} from '../../src/internal-types';
+  ATTR_HTTP_REQUEST_CONTENT_LENGTH,
+  ATTR_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
+  ATTR_HTTP_RESPONSE_CONTENT_LENGTH,
+  ATTR_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
+  ATTR_HTTP_TARGET,
+  ATTR_USER_AGENT_SYNTHETIC_TYPE,
+  USER_AGENT_SYNTHETIC_TYPE_VALUE_BOT,
+} from '../../src/semconv';
+import { IgnoreMatcher, ParsedRequestOptions } from '../../src/internal-types';
 import * as utils from '../../src/utils';
-import { AttributeNames } from '../../src/enums/AttributeNames';
 import { RPCType, setRPCMetadata } from '@opentelemetry/core';
 import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks';
+import { SemconvStability } from '@opentelemetry/instrumentation';
 import { extractHostnameAndPort } from '../../src/utils';
+import { AttributeNames } from '../../src/enums/AttributeNames';
+import { ParsedUrlQuery } from 'node:querystring';
 
 describe('Utility', () => {
   describe('parseResponseStatus()', () => {
@@ -78,7 +81,20 @@ describe('Utility', () => {
   describe('getRequestInfo()', () => {
     it('should get options object', () => {
       const webUrl = 'http://u:p@google.fr/aPath?qu=ry';
-      const urlParsed = url.parse(webUrl);
+      const urlParsed = {
+        protocol: 'http:',
+        slashes: true,
+        auth: 'u:p',
+        host: 'google.fr',
+        port: null,
+        hostname: 'google.fr',
+        hash: null,
+        search: '?qu=ry',
+        query: 'qu=ry',
+        pathname: '/aPath',
+        path: '/aPath?qu=ry',
+        href: 'http://u:p@google.fr/aPath?qu=ry',
+      };
       const urlParsedWithoutPathname = {
         ...urlParsed,
         pathname: undefined,
@@ -93,7 +109,7 @@ describe('Utility', () => {
         host: undefined,
         port: null,
       };
-      const whatWgUrl = new url.URL(webUrl);
+      const whatWgUrl = new URL(webUrl);
       for (const param of [
         webUrl,
         urlParsed,
@@ -153,12 +169,44 @@ describe('Utility', () => {
   describe('getAbsoluteUrl()', () => {
     it('should return absolute url with localhost', () => {
       const path = '/test/1';
-      const result = utils.getAbsoluteUrl(url.parse(path), {});
+      const result = utils.getAbsoluteUrl(
+        {
+          protocol: null,
+          slashes: null,
+          auth: null,
+          host: null,
+          port: null,
+          hostname: null,
+          hash: null,
+          search: null,
+          query: null as unknown as undefined,
+          pathname: '/test/1',
+          path: '/test/1',
+          href: '/test/1',
+        },
+        {}
+      );
       assert.strictEqual(result, `http://localhost${path}`);
     });
     it('should return absolute url', () => {
       const absUrl = 'http://www.google/test/1?query=1';
-      const result = utils.getAbsoluteUrl(url.parse(absUrl), {});
+      const result = utils.getAbsoluteUrl(
+        {
+          protocol: 'http:',
+          slashes: true,
+          auth: null,
+          host: 'www.google',
+          port: null,
+          hostname: 'www.google',
+          hash: null,
+          search: '?query=1',
+          query: 'query=1' as unknown as ParsedUrlQuery,
+          pathname: '/test/1',
+          path: '/test/1?query=1',
+          href: 'http://www.google/test/1?query=1',
+        },
+        {}
+      );
       assert.strictEqual(result, absUrl);
     });
     it('should return default url', () => {
@@ -172,6 +220,53 @@ describe('Utility', () => {
       );
       assert.strictEqual(result, 'http://localhost:8080/helloworld');
     });
+    it('should return auth credentials as REDACTED to avoid leaking sensitive information', () => {
+      const result = utils.getAbsoluteUrl(
+        { path: '/helloworld', port: 8080, auth: 'user:password' },
+        {}
+      );
+      assert.strictEqual(
+        result,
+        'http://REDACTED:REDACTED@localhost:8080/helloworld'
+      );
+    });
+    it('should return auth credentials and particular query strings as REDACTED', () => {
+      const result = utils.getAbsoluteUrl(
+        {
+          path: '/registers?X-Goog-Signature=secret123',
+          port: 8080,
+          auth: 'user:pass',
+        },
+        {}
+      );
+      assert.strictEqual(
+        result,
+        'http://REDACTED:REDACTED@localhost:8080/registers?X-Goog-Signature=REDACTED'
+      );
+    });
+    it('should return particular query strings as REDACTED', () => {
+      const result = utils.getAbsoluteUrl(
+        {
+          path: '/registers?AWSAccessKeyId=secret123',
+          port: 8080,
+        },
+        {}
+      );
+      assert.strictEqual(
+        result,
+        'http://localhost:8080/registers?AWSAccessKeyId=REDACTED'
+      );
+    });
+    it('does not perform redaction if the provided path cannot be parsed', () => {
+      const result = utils.getAbsoluteUrl(
+        { path: 'http://?AWSAccessKeyId=secret123' },
+        {}
+      );
+      assert.strictEqual(
+        result,
+        'http://localhosthttp://?AWSAccessKeyId=secret123'
+      );
+    });
   });
 
   describe('setSpanWithError()', () => {
@@ -184,7 +279,6 @@ describe('Utility', () => {
         recordException: () => undefined,
       } as unknown as Span;
       const mock = sinon.mock(span);
-
       mock
         .expects('setAttribute')
         .calledWithExactly(AttributeNames.HTTP_ERROR_NAME, 'error');
@@ -210,7 +304,11 @@ describe('Utility', () => {
         assert.strictEqual(utils.isValidOptionsType(options), false);
       });
     });
-    for (const options of ['url', url.parse('http://url.com'), {}]) {
+    for (const options of [
+      'url',
+      url.urlToHttpOptions(new URL('http://url.com')),
+      {},
+    ]) {
       it(`should return true with the following value: ${JSON.stringify(
         options
       )}`, () => {
@@ -237,7 +335,7 @@ describe('Utility', () => {
             {} as ServerResponse,
             SemconvStability.OLD
           );
-          assert.deepStrictEqual(attributes[SEMATTRS_HTTP_ROUTE], '/user/:id');
+          assert.deepStrictEqual(attributes[ATTR_HTTP_ROUTE], '/user/:id');
           context.disable();
           return done();
         }
@@ -255,31 +353,29 @@ describe('Utility', () => {
         } as ServerResponse & { socket: Socket },
         SemconvStability.OLD
       );
-      assert.deepEqual(attributes[SEMATTRS_HTTP_ROUTE], undefined);
+      assert.deepEqual(attributes[ATTR_HTTP_ROUTE], undefined);
     });
   });
 
   describe('getIncomingRequestMetricAttributesOnResponse()', () => {
     it('should correctly add http_route if span has it', () => {
       const spanAttributes: Attributes = {
-        [SEMATTRS_HTTP_ROUTE]: '/user/:id',
+        [ATTR_HTTP_ROUTE]: '/user/:id',
       };
       const metricAttributes =
         utils.getIncomingRequestMetricAttributesOnResponse(spanAttributes);
 
-      assert.deepStrictEqual(
-        metricAttributes[SEMATTRS_HTTP_ROUTE],
-        '/user/:id'
-      );
+      assert.deepStrictEqual(metricAttributes[ATTR_HTTP_ROUTE], '/user/:id');
     });
 
     it('should skip http_route if span does not have it', () => {
       const spanAttributes: Attributes = {};
       const metricAttributes =
         utils.getIncomingRequestMetricAttributesOnResponse(spanAttributes);
-      assert.deepEqual(metricAttributes[SEMATTRS_HTTP_ROUTE], undefined);
+      assert.deepEqual(metricAttributes[ATTR_HTTP_ROUTE], undefined);
     });
   });
+
   // Verify the key in the given attributes is set to the given value,
   // and that no other HTTP Content Length attributes are set.
   function verifyValueInAttributes(
@@ -288,10 +384,10 @@ describe('Utility', () => {
     value: number
   ) {
     const SemanticAttributess = [
-      SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
-      SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
-      SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
-      SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH,
+      ATTR_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
+      ATTR_HTTP_RESPONSE_CONTENT_LENGTH,
+      ATTR_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
+      ATTR_HTTP_REQUEST_CONTENT_LENGTH,
     ];
 
     for (const attr of SemanticAttributess) {
@@ -315,7 +411,7 @@ describe('Utility', () => {
 
       verifyValueInAttributes(
         attributes,
-        SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
+        ATTR_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
         1200
       );
     });
@@ -331,7 +427,7 @@ describe('Utility', () => {
 
       verifyValueInAttributes(
         attributes,
-        SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
+        ATTR_HTTP_REQUEST_CONTENT_LENGTH_UNCOMPRESSED,
         1200
       );
     });
@@ -347,7 +443,7 @@ describe('Utility', () => {
 
       verifyValueInAttributes(
         attributes,
-        SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH,
+        ATTR_HTTP_REQUEST_CONTENT_LENGTH,
         1200
       );
     });
@@ -366,7 +462,7 @@ describe('Utility', () => {
 
       verifyValueInAttributes(
         attributes,
-        SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
+        ATTR_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
         1200
       );
     });
@@ -385,7 +481,7 @@ describe('Utility', () => {
 
       verifyValueInAttributes(
         attributes,
-        SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
+        ATTR_HTTP_RESPONSE_CONTENT_LENGTH_UNCOMPRESSED,
         1200
       );
     });
@@ -404,7 +500,7 @@ describe('Utility', () => {
 
       verifyValueInAttributes(
         attributes,
-        SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
+        ATTR_HTTP_RESPONSE_CONTENT_LENGTH,
         1200
       );
     });
@@ -438,10 +534,11 @@ describe('Utility', () => {
         {
           component: 'http',
           semconvStability: SemconvStability.OLD,
+          enableSyntheticSourceDetection: false,
         },
         diag
       );
-      assert.strictEqual(attributes[SEMATTRS_HTTP_ROUTE], undefined);
+      assert.strictEqual(attributes[ATTR_HTTP_ROUTE], undefined);
     });
 
     it('should set http.target as path in http span attributes', () => {
@@ -458,10 +555,37 @@ describe('Utility', () => {
         {
           component: 'http',
           semconvStability: SemconvStability.OLD,
+          enableSyntheticSourceDetection: false,
         },
         diag
       );
-      assert.strictEqual(attributes[SEMATTRS_HTTP_TARGET], '/user/?q=val');
+      assert.strictEqual(attributes[ATTR_HTTP_TARGET], '/user/?q=val');
+      assert.strictEqual(attributes[ATTR_USER_AGENT_SYNTHETIC_TYPE], undefined);
+    });
+
+    it('should set synthetic attributes on requests', () => {
+      const request = {
+        url: 'http://hostname/user/:id',
+        method: 'GET',
+        socket: {},
+      } as IncomingMessage;
+      request.headers = {
+        'user-agent': 'Googlebot',
+      };
+      const attributes = utils.getIncomingRequestAttributes(
+        request,
+        {
+          component: 'http',
+          semconvStability: SemconvStability.STABLE,
+          enableSyntheticSourceDetection: true,
+        },
+        diag
+      );
+      assert.strictEqual(attributes[ATTR_USER_AGENT_ORIGINAL], 'Googlebot');
+      assert.strictEqual(
+        attributes[ATTR_USER_AGENT_SYNTHETIC_TYPE],
+        USER_AGENT_SYNTHETIC_TYPE_VALUE_BOT
+      );
     });
   });
 
@@ -615,6 +739,102 @@ describe('Utility', () => {
       const { hostname, port } = extractHostnameAndPort(parsedOption);
       assert.strictEqual(hostname, 'www.google.com');
       assert.strictEqual(port, '80');
+    });
+  });
+
+  describe('getRemoteClientAddress()', () => {
+    it('returns IP address from x-forwarded-for header', () => {
+      const request = {
+        headers: {
+          'x-forwarded-for': '127.0.0.1, <proxy1>, <proxy2>',
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '127.0.0.1');
+    });
+
+    it('returns IP address from x-forwarded-for header array', () => {
+      const request = {
+        headers: {
+          'x-forwarded-for': ['127.0.0.1'],
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '127.0.0.1');
+    });
+
+    it('returns IP address without port from x-forwarded-for header', () => {
+      const request = {
+        headers: {
+          'x-forwarded-for': '127.0.0.1:54321',
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '127.0.0.1');
+    });
+
+    it('returns IP address without port from x-forwarded-for header array', () => {
+      const request = {
+        headers: {
+          'x-forwarded-for': ['127.0.0.1:54321'],
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '127.0.0.1');
+    });
+
+    it('handles IPv6 addresses containing brackets in x-forwarded-for header', () => {
+      const request = {
+        headers: {
+          'x-forwarded-for': '[::1]',
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '::1');
+    });
+
+    it('forwarded header takes precedence over x-forwarded-for', () => {
+      const request = {
+        headers: {
+          forwarded: 'for=192.0.2.60;proto=http;by=203.0.113.43',
+          'x-forwarded-for': '127.0.0.1',
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '192.0.2.60');
+    });
+
+    it('handles forwarded header with chain of proxies', () => {
+      const request = {
+        headers: {
+          forwarded: 'for=192.0.2.43, for=198.51.100.17',
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '192.0.2.43');
+    });
+
+    it('handles IPv6 addresses containing brackets in forwarded header', () => {
+      const request = {
+        headers: {
+          forwarded: 'for="[2001:db8:cafe::17]:4711"',
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(
+        utils.getRemoteClientAddress(request),
+        '2001:db8:cafe::17'
+      );
+    });
+
+    it('returns address from socket as fallback', () => {
+      const request = {
+        headers: {},
+        socket: {
+          remoteAddress: '192.168.0.1',
+        },
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), '192.168.0.1');
+    });
+
+    it('returns null if client address cannot be determined', () => {
+      const request = {
+        headers: {},
+        socket: {},
+      } as unknown as IncomingMessage;
+      assert.strictEqual(utils.getRemoteClientAddress(request), null);
     });
   });
 });

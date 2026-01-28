@@ -16,14 +16,14 @@
 
 import { SpanKind, Span, context, propagation } from '@opentelemetry/api';
 import {
-  HTTPFLAVORVALUES_HTTP_1_1,
-  NETTRANSPORTVALUES_IP_TCP,
-  SEMATTRS_HTTP_FLAVOR,
-  SEMATTRS_HTTP_HOST,
-  SEMATTRS_NET_TRANSPORT,
-} from '@opentelemetry/semantic-conventions';
+  ATTR_HTTP_FLAVOR,
+  ATTR_HTTP_HOST,
+  ATTR_NET_TRANSPORT,
+  HTTP_FLAVOR_VALUE_HTTP_1_1,
+  NET_TRANSPORT_VALUE_IP_TCP,
+} from '../../src/semconv';
 import * as assert from 'assert';
-import * as url from 'url';
+import { urlToHttpOptions } from 'url';
 import { HttpInstrumentation } from '../../src/http';
 import { assertSpan } from '../utils/assertSpan';
 import * as utils from '../utils/utils';
@@ -180,7 +180,7 @@ describe('HttpInstrumentation Integration tests', () => {
       assert.strictEqual(spans.length, 0);
 
       const result = await httpRequest.get(
-        new url.URL(`${protocol}://localhost:${mockServerPort}/?query=test`)
+        new URL(`${protocol}://localhost:${mockServerPort}/?query=test`)
       );
 
       spans = memoryExporter.getFinishedSpans();
@@ -207,7 +207,7 @@ describe('HttpInstrumentation Integration tests', () => {
       assert.strictEqual(spans.length, 0);
 
       const result = await httpRequest.get(
-        new url.URL(`${protocol}://localhost:${mockServerPort}/?query=test`),
+        new URL(`${protocol}://localhost:${mockServerPort}/?query=test`),
         {
           headers: { 'x-foo': 'foo' },
         }
@@ -231,12 +231,12 @@ describe('HttpInstrumentation Integration tests', () => {
       assert.strictEqual(span.name, 'GET');
       assert.strictEqual(result.reqHeaders['x-foo'], 'foo');
       assert.strictEqual(
-        span.attributes[SEMATTRS_HTTP_FLAVOR],
-        HTTPFLAVORVALUES_HTTP_1_1
+        span.attributes[ATTR_HTTP_FLAVOR],
+        HTTP_FLAVOR_VALUE_HTTP_1_1
       );
       assert.strictEqual(
-        span.attributes[SEMATTRS_NET_TRANSPORT],
-        NETTRANSPORTVALUES_IP_TCP
+        span.attributes[ATTR_NET_TRANSPORT],
+        NET_TRANSPORT_VALUE_IP_TCP
       );
       assertSpan(span, SpanKind.CLIENT, validations);
     });
@@ -270,7 +270,7 @@ describe('HttpInstrumentation Integration tests', () => {
 
       const headers = { 'x-foo': 'foo' };
       const result = await httpRequest.get(
-        new url.URL(`${protocol}://localhost:${mockServerPort}/?query=test`),
+        new URL(`${protocol}://localhost:${mockServerPort}/?query=test`),
         { headers }
       );
       assert.deepStrictEqual(headers, { 'x-foo': 'foo' });
@@ -284,7 +284,7 @@ describe('HttpInstrumentation Integration tests', () => {
 
       const headers = { 'x-foo': 'foo', forwarded: 'malformed' };
       const result = await httpRequest.get(
-        new url.URL(`${protocol}://localhost:${mockServerPort}/?query=test`),
+        new URL(`${protocol}://localhost:${mockServerPort}/?query=test`),
         { headers }
       );
 
@@ -297,7 +297,7 @@ describe('HttpInstrumentation Integration tests', () => {
       assert.strictEqual(spans.length, 0);
       const options = Object.assign(
         { headers: { Expect: '100-continue' } },
-        url.parse(`${protocol}://localhost:${mockServerPort}/`)
+        urlToHttpOptions(new URL(`${protocol}://localhost:${mockServerPort}/`))
       );
 
       const result = await httpRequest.get(options);
@@ -406,7 +406,7 @@ describe('HttpInstrumentation Integration tests', () => {
       assert.ok(span);
       assert.strictEqual(span.name, 'GET');
       assert.strictEqual(
-        span.attributes[SEMATTRS_HTTP_HOST],
+        span.attributes[ATTR_HTTP_HOST],
         `localhost:${mockServerPort}`
       );
     });

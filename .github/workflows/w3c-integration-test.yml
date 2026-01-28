@@ -7,22 +7,25 @@ on:
   pull_request:
   merge_group:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout 🛎️
-        uses: actions/checkout@v4
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
         with:
           cache: 'npm'
           cache-dependency-path: |
             package-lock.json
-          node-version: 18
+          node-version: 22
 
       - name: Install and Bootstrap 🔧
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Generate version.ts files
         run: npm run version:update

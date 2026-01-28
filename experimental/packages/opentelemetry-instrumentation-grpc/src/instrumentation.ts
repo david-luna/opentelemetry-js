@@ -26,7 +26,6 @@ import type {
   loadPackageDefinition,
   GrpcObject,
 } from '@grpc/grpc-js';
-
 import type * as grpcJs from '@grpc/grpc-js';
 
 import type {
@@ -40,7 +39,7 @@ import type {
   ClientRequestFunction,
   metadataCaptureType,
 } from './internal-types';
-import type { GrpcInstrumentationConfig } from './types';
+import { type GrpcInstrumentationConfig } from './types';
 
 import {
   context,
@@ -50,18 +49,27 @@ import {
   SpanKind,
   trace,
   Span,
+  type Attributes,
 } from '@opentelemetry/api';
 import {
   InstrumentationNodeModuleDefinition,
   InstrumentationBase,
+  SemconvStability,
+  semconvStabilityFromStr,
 } from '@opentelemetry/instrumentation';
+
 import {
-  SEMATTRS_NET_PEER_NAME,
-  SEMATTRS_NET_PEER_PORT,
-  SEMATTRS_RPC_METHOD,
-  SEMATTRS_RPC_SERVICE,
-  SEMATTRS_RPC_SYSTEM,
+  ATTR_SERVER_ADDRESS,
+  ATTR_SERVER_PORT,
 } from '@opentelemetry/semantic-conventions';
+
+import {
+  ATTR_NET_PEER_NAME,
+  ATTR_NET_PEER_PORT,
+  ATTR_RPC_METHOD,
+  ATTR_RPC_SERVICE,
+  ATTR_RPC_SYSTEM,
+} from './semconv';
 
 import {
   shouldNotTraceServerCall,
@@ -89,10 +97,16 @@ import { VERSION } from './version';
 
 export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentationConfig> {
   private _metadataCapture: metadataCaptureType;
+  private _semconvStability: SemconvStability;
 
   constructor(config: GrpcInstrumentationConfig = {}) {
     super('@opentelemetry/instrumentation-grpc', VERSION, config);
     this._metadataCapture = this._createMetadataCapture();
+
+    this._semconvStability = semconvStabilityFromStr(
+      'http',
+      process.env.OTEL_SEMCONV_STABILITY_OPT_IN
+    );
   }
 
   init() {
@@ -126,22 +140,38 @@ export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentation
           this._wrap(
             moduleExports.Client.prototype,
             'makeUnaryRequest',
-            this._patchClientRequestMethod(moduleExports, false)
+            this._patchClientRequestMethod(
+              moduleExports,
+              false,
+              'makeUnaryRequest'
+            )
           );
           this._wrap(
             moduleExports.Client.prototype,
             'makeClientStreamRequest',
-            this._patchClientRequestMethod(moduleExports, false)
+            this._patchClientRequestMethod(
+              moduleExports,
+              false,
+              'makeClientStreamRequest'
+            )
           );
           this._wrap(
             moduleExports.Client.prototype,
             'makeServerStreamRequest',
-            this._patchClientRequestMethod(moduleExports, true)
+            this._patchClientRequestMethod(
+              moduleExports,
+              true,
+              'makeServerStreamRequest'
+            )
           );
           this._wrap(
             moduleExports.Client.prototype,
             'makeBidiStreamRequest',
-            this._patchClientRequestMethod(moduleExports, true)
+            this._patchClientRequestMethod(
+              moduleExports,
+              true,
+              'makeBidiStreamRequest'
+            )
           );
           return moduleExports;
         },
@@ -241,9 +271,9 @@ export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentation
                   const span = instrumentation.tracer
                     .startSpan(spanName, spanOptions)
                     .setAttributes({
-                      [SEMATTRS_RPC_SYSTEM]: AttributeValues.RPC_SYSTEM,
-                      [SEMATTRS_RPC_METHOD]: method,
-                      [SEMATTRS_RPC_SERVICE]: service,
+                      [ATTR_RPC_SYSTEM]: AttributeValues.RPC_SYSTEM,
+                      [ATTR_RPC_METHOD]: method,
+                      [ATTR_RPC_SERVICE]: service,
                     });
 
                   instrumentation._metadataCapture.server.captureRequestMetadata(
@@ -290,15 +320,14 @@ export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentation
    */
   private _patchClientRequestMethod<ReturnType extends EventEmitter>(
     grpcLib: typeof grpcJs,
-    hasResponseStream: boolean
+    hasResponseStream: boolean,
+    name: string
   ): (
     original: ClientRequestFunction<ReturnType>
   ) => ClientRequestFunction<ReturnType> {
     const instrumentation = this;
     return (original: ClientRequestFunction<ReturnType>) => {
-      instrumentation._diag.debug(
-        'patched makeClientStreamRequest on grpc client'
-      );
+      instrumentation._diag.debug(`patched ${name} on grpc client`);
 
       return function makeClientStreamRequest(this: grpcJs.Client) {
         // method must always be at first position
@@ -326,7 +355,11 @@ export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentation
           service,
           metadata
         );
-        instrumentation.extractNetMetadata(this, span);
+        instrumentation.extractNetMetadata(
+          this,
+          span,
+          instrumentation._semconvStability
+        );
 
         // Callback is only present when there is no responseStream
         if (!hasResponseStream) {
@@ -435,11 +468,15 @@ export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentation
         const span = instrumentation.tracer
           .startSpan(name, { kind: SpanKind.CLIENT })
           .setAttributes({
-            [SEMATTRS_RPC_SYSTEM]: 'grpc',
-            [SEMATTRS_RPC_METHOD]: method,
-            [SEMATTRS_RPC_SERVICE]: service,
+            [ATTR_RPC_SYSTEM]: 'grpc',
+            [ATTR_RPC_METHOD]: method,
+            [ATTR_RPC_SERVICE]: service,
           });
-        instrumentation.extractNetMetadata(this, span);
+        instrumentation.extractNetMetadata(
+          this,
+          span,
+          instrumentation._semconvStability
+        );
 
         instrumentation._metadataCapture.client.captureRequestMetadata(
           span,
@@ -480,9 +517,9 @@ export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentation
     const span = this.tracer
       .startSpan(name, { kind: SpanKind.CLIENT })
       .setAttributes({
-        [SEMATTRS_RPC_SYSTEM]: 'grpc',
-        [SEMATTRS_RPC_METHOD]: methodAttributeValue,
-        [SEMATTRS_RPC_SERVICE]: service,
+        [ATTR_RPC_SYSTEM]: 'grpc',
+        [ATTR_RPC_METHOD]: methodAttributeValue,
+        [ATTR_RPC_SERVICE]: service,
       });
 
     if (metadata != null) {
@@ -491,15 +528,37 @@ export class GrpcInstrumentation extends InstrumentationBase<GrpcInstrumentation
     return span;
   }
 
-  private extractNetMetadata(client: grpcJs.Client, span: Span) {
+  private extractNetMetadata(
+    client: grpcJs.Client,
+    span: Span,
+    semconvStability: SemconvStability
+  ) {
     // set net.peer.* from target (e.g., "dns:otel-productcatalogservice:8080") as a hint to APMs
     const parsedUri = URI_REGEX.exec(client.getChannel().getTarget());
-    if (parsedUri != null && parsedUri.groups != null) {
-      span.setAttribute(SEMATTRS_NET_PEER_NAME, parsedUri.groups['name']);
-      span.setAttribute(
-        SEMATTRS_NET_PEER_PORT,
-        parseInt(parsedUri.groups['port'])
-      );
+    const hostname = parsedUri?.groups?.name;
+    const port = parseInt(parsedUri?.groups?.port ?? '');
+
+    const oldAttributes: Attributes = {
+      [ATTR_NET_PEER_NAME]: hostname,
+      [ATTR_NET_PEER_PORT]: port,
+    };
+    const newAttributes: Attributes = {
+      [ATTR_SERVER_ADDRESS]: hostname,
+      [ATTR_SERVER_PORT]: port,
+    };
+
+    switch (semconvStability) {
+      case SemconvStability.STABLE:
+        span.setAttributes(newAttributes);
+        break;
+      case SemconvStability.OLD:
+        span.setAttributes(oldAttributes);
+        break;
+      case SemconvStability.DUPLICATE:
+        span.setAttributes({ ...oldAttributes, ...newAttributes });
+        break;
+      default:
+        span.setAttributes(oldAttributes);
     }
   }
 

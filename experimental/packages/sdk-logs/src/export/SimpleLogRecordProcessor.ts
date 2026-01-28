@@ -23,18 +23,29 @@ import {
 } from '@opentelemetry/core';
 import type { LogRecordExporter } from './LogRecordExporter';
 import type { LogRecordProcessor } from '../LogRecordProcessor';
-import type { LogRecord } from './../LogRecord';
+import type { SdkLogRecord } from './SdkLogRecord';
 
+/**
+ * An implementation of the {@link LogRecordProcessor} interface that exports
+ * each {@link LogRecord} as it is emitted.
+ *
+ * NOTE: This {@link LogRecordProcessor} exports every {@link LogRecord}
+ * individually instead of batching them together, which can cause significant
+ * performance overhead with most exporters. For production use, please consider
+ * using the {@link BatchLogRecordProcessor} instead.
+ */
 export class SimpleLogRecordProcessor implements LogRecordProcessor {
+  private readonly _exporter: LogRecordExporter;
   private _shutdownOnce: BindOnceFuture<void>;
   private _unresolvedExports: Set<Promise<void>>;
 
-  constructor(private readonly _exporter: LogRecordExporter) {
+  constructor(exporter: LogRecordExporter) {
+    this._exporter = exporter;
     this._shutdownOnce = new BindOnceFuture(this._shutdown, this);
     this._unresolvedExports = new Set<Promise<void>>();
   }
 
-  public onEmit(logRecord: LogRecord): void {
+  public onEmit(logRecord: SdkLogRecord): void {
     if (this._shutdownOnce.isCalled) {
       return;
     }

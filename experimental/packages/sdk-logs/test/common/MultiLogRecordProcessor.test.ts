@@ -23,9 +23,7 @@ import {
   InMemoryLogRecordExporter,
   SimpleLogRecordProcessor,
 } from './../../src';
-import { loadDefaultConfig } from '../../src/config';
 import { MultiLogRecordProcessor } from './../../src/MultiLogRecordProcessor';
-import { assertRejects } from '../test-utils';
 
 class TestProcessor implements LogRecordProcessor {
   logRecords: ReadableLogRecord[] = [];
@@ -42,7 +40,7 @@ class TestProcessor implements LogRecordProcessor {
 }
 
 const setup = (processors: LogRecordProcessor[] = []) => {
-  const { forceFlushTimeoutMillis } = loadDefaultConfig();
+  const forceFlushTimeoutMillis = 30_000;
   const multiProcessor = new MultiLogRecordProcessor(
     processors,
     forceFlushTimeoutMillis
@@ -60,8 +58,7 @@ describe('MultiLogRecordProcessor', () => {
   describe('onEmit', () => {
     it('should handle empty log record processor', () => {
       const { multiProcessor } = setup();
-      const provider = new LoggerProvider();
-      provider.addLogRecordProcessor(multiProcessor);
+      const provider = new LoggerProvider({ processors: [multiProcessor] });
       const logger = provider.getLogger('default');
       logger.emit({ body: 'one' });
       multiProcessor.shutdown();
@@ -70,8 +67,7 @@ describe('MultiLogRecordProcessor', () => {
     it('should handle one log record processor', () => {
       const processor1 = new TestProcessor();
       const { multiProcessor } = setup([processor1]);
-      const provider = new LoggerProvider();
-      provider.addLogRecordProcessor(multiProcessor);
+      const provider = new LoggerProvider({ processors: [multiProcessor] });
       const logger = provider.getLogger('default');
       assert.strictEqual(processor1.logRecords.length, 0);
 
@@ -84,8 +80,7 @@ describe('MultiLogRecordProcessor', () => {
       const processor1 = new TestProcessor();
       const processor2 = new TestProcessor();
       const { multiProcessor } = setup([processor1, processor2]);
-      const provider = new LoggerProvider();
-      provider.addLogRecordProcessor(multiProcessor);
+      const provider = new LoggerProvider({ processors: [multiProcessor] });
       const logger = provider.getLogger('default');
 
       assert.strictEqual(processor1.logRecords.length, 0);
@@ -177,7 +172,7 @@ describe('MultiLogRecordProcessor', () => {
       const res = multiProcessor.forceFlush();
       clock.tick(forceFlushTimeoutMillis + 1000);
       clock.restore();
-      await assertRejects(res, /Operation timed out/);
+      await assert.rejects(res, /Operation timed out/);
     });
   });
 
@@ -186,8 +181,7 @@ describe('MultiLogRecordProcessor', () => {
       const processor1 = new TestProcessor();
       const processor2 = new TestProcessor();
       const { multiProcessor } = setup([processor1, processor2]);
-      const provider = new LoggerProvider();
-      provider.addLogRecordProcessor(multiProcessor);
+      const provider = new LoggerProvider({ processors: [multiProcessor] });
       const logger = provider.getLogger('default');
 
       assert.strictEqual(processor1.logRecords.length, 0);

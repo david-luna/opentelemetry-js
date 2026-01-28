@@ -14,24 +14,27 @@
  * limitations under the License.
  */
 
-import {
-  context,
-  propagation,
-  trace,
-  ProxyTracerProvider,
-} from '@opentelemetry/api';
+import { context, propagation, trace } from '@opentelemetry/api';
 import { CompositePropagator } from '@opentelemetry/core';
 import * as assert from 'assert';
+import * as sinon from 'sinon';
 import { StackContextManager, WebTracerProvider } from '../src';
 
-describe('API registration', () => {
+describe('API registration', function () {
+  let setGlobalTracerProviderSpy: sinon.SinonSpy;
+
   beforeEach(() => {
     context.disable();
     trace.disable();
     propagation.disable();
+    setGlobalTracerProviderSpy = sinon.spy(trace, 'setGlobalTracerProvider');
   });
 
-  it('should register default implementations', () => {
+  afterEach(() => {
+    sinon.restore();
+  });
+
+  it('should register default implementations', function () {
     const tracerProvider = new WebTracerProvider();
     tracerProvider.register();
 
@@ -39,11 +42,13 @@ describe('API registration', () => {
     assert.ok(
       propagation['_getGlobalPropagator']() instanceof CompositePropagator
     );
-    const apiTracerProvider = trace.getTracerProvider() as ProxyTracerProvider;
-    assert.ok(apiTracerProvider.getDelegate() === tracerProvider);
+    sinon.assert.calledOnceWithMatch(
+      setGlobalTracerProviderSpy,
+      (provider: any) => provider === tracerProvider
+    );
   });
 
-  it('should register configured implementations', () => {
+  it('should register configured implementations', function () {
     const tracerProvider = new WebTracerProvider();
 
     const contextManager = { disable() {}, enable() {} } as any;
@@ -57,11 +62,13 @@ describe('API registration', () => {
     assert.ok(context['_getContextManager']() === contextManager);
     assert.ok(propagation['_getGlobalPropagator']() === propagator);
 
-    const apiTracerProvider = trace.getTracerProvider() as ProxyTracerProvider;
-    assert.ok(apiTracerProvider.getDelegate() === tracerProvider);
+    sinon.assert.calledOnceWithMatch(
+      setGlobalTracerProviderSpy,
+      (provider: any) => provider === tracerProvider
+    );
   });
 
-  it('should skip null context manager', () => {
+  it('should skip null context manager', function () {
     const ctxManager = context['_getContextManager']();
     const tracerProvider = new WebTracerProvider();
     tracerProvider.register({
@@ -77,11 +84,13 @@ describe('API registration', () => {
     assert.ok(
       propagation['_getGlobalPropagator']() instanceof CompositePropagator
     );
-    const apiTracerProvider = trace.getTracerProvider() as ProxyTracerProvider;
-    assert.ok(apiTracerProvider.getDelegate() === tracerProvider);
+    sinon.assert.calledOnceWithMatch(
+      setGlobalTracerProviderSpy,
+      (provider: any) => provider === tracerProvider
+    );
   });
 
-  it('should skip null propagator', () => {
+  it('should skip null propagator', function () {
     const propagator = propagation['_getGlobalPropagator']();
     const tracerProvider = new WebTracerProvider();
     tracerProvider.register({
@@ -95,7 +104,9 @@ describe('API registration', () => {
     );
 
     assert.ok(context['_getContextManager']() instanceof StackContextManager);
-    const apiTracerProvider = trace.getTracerProvider() as ProxyTracerProvider;
-    assert.ok(apiTracerProvider.getDelegate() === tracerProvider);
+    sinon.assert.calledOnceWithMatch(
+      setGlobalTracerProviderSpy,
+      (provider: any) => provider === tracerProvider
+    );
   });
 });

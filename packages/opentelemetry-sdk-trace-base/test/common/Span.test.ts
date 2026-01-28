@@ -33,9 +33,9 @@ import {
   otperformance as performance,
 } from '@opentelemetry/core';
 import {
-  SEMATTRS_EXCEPTION_MESSAGE,
-  SEMATTRS_EXCEPTION_STACKTRACE,
-  SEMATTRS_EXCEPTION_TYPE,
+  ATTR_EXCEPTION_MESSAGE,
+  ATTR_EXCEPTION_STACKTRACE,
+  ATTR_EXCEPTION_TYPE,
 } from '@opentelemetry/semantic-conventions';
 import * as assert from 'assert';
 import * as sinon from 'sinon';
@@ -1346,6 +1346,29 @@ describe('Span', () => {
       const s = provider.getTracer('default').startSpan('test') as Span;
       assert.ok(s.attributes.attr);
     });
+
+    it('should call onEnding with a writeable span', () => {
+      const processor: SpanProcessor = {
+        onStart: span => {
+          span.setAttribute('attr', true);
+        },
+        forceFlush: () => Promise.resolve(),
+        onEnding: span => {
+          span.setAttribute('attr2', true);
+        },
+        onEnd() {},
+        shutdown: () => Promise.resolve(),
+      };
+
+      const provider = new BasicTracerProvider({
+        spanProcessors: [processor],
+      });
+
+      const s = provider.getTracer('default').startSpan('test') as Span;
+      s.end();
+      assert.ok(s.attributes.attr);
+      assert.ok(s.attributes.attr2);
+    });
   });
 
   describe('recordException', () => {
@@ -1439,10 +1462,10 @@ describe('Span', () => {
 
           assert.ok(event.attributes);
 
-          const type = event.attributes[SEMATTRS_EXCEPTION_TYPE];
-          const message = event.attributes[SEMATTRS_EXCEPTION_MESSAGE];
+          const type = event.attributes[ATTR_EXCEPTION_TYPE];
+          const message = event.attributes[ATTR_EXCEPTION_MESSAGE];
           const stacktrace = String(
-            event.attributes[SEMATTRS_EXCEPTION_STACKTRACE]
+            event.attributes[ATTR_EXCEPTION_STACKTRACE]
           );
           assert.strictEqual(type, 'Error');
           assert.strictEqual(message, 'boom');
@@ -1488,7 +1511,7 @@ describe('Span', () => {
         span.recordException({ code: 12 });
         const event = span.events[0];
         assert.deepStrictEqual(event.attributes, {
-          [SEMATTRS_EXCEPTION_TYPE]: '12',
+          [ATTR_EXCEPTION_TYPE]: '12',
         });
       });
     });

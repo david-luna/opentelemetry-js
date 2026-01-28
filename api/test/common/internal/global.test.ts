@@ -17,7 +17,6 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import { getGlobal } from '../../../src/internal/global-utils';
-import { _globalThis } from '../../../src/platform';
 import { NoopContextManager } from '../../../src/context/NoopContextManager';
 import { DiagLogLevel } from '../../../src/diag/types';
 
@@ -41,7 +40,7 @@ const getMockLogger = () => ({
   error: sinon.spy(),
 });
 
-describe('Global Utils', () => {
+describe('Global Utils', function () {
   // prove they are separate instances
   assert.notEqual(api1, api2);
   // that return separate noop instances to start
@@ -56,10 +55,10 @@ describe('Global Utils', () => {
     api1.trace.disable();
     api1.diag.disable();
     // @ts-expect-error we are modifying internals for testing purposes here
-    delete _globalThis[Symbol.for(GLOBAL_API_SYMBOL_KEY)];
+    delete globalThis[Symbol.for(GLOBAL_API_SYMBOL_KEY)];
   });
 
-  it('should change the global context manager', () => {
+  it('should change the global context manager', function () {
     const original = api1.context['_getContextManager']();
     const newContextManager = new NoopContextManager();
     api1.context.setGlobalContextManager(newContextManager);
@@ -67,7 +66,7 @@ describe('Global Utils', () => {
     assert.strictEqual(api1.context['_getContextManager'](), newContextManager);
   });
 
-  it('should load an instance from one which was set in the other', () => {
+  it('should load an instance from one which was set in the other', function () {
     api1.context.setGlobalContextManager(new NoopContextManager());
     assert.strictEqual(
       api1.context['_getContextManager'](),
@@ -75,7 +74,7 @@ describe('Global Utils', () => {
     );
   });
 
-  it('should disable both if one is disabled', () => {
+  it('should disable both if one is disabled', function () {
     const manager = new NoopContextManager();
     api1.context.setGlobalContextManager(manager);
 
@@ -84,7 +83,7 @@ describe('Global Utils', () => {
     assert.notStrictEqual(manager, api1.context['_getContextManager']());
   });
 
-  it('should not register if the version is a mismatch', () => {
+  it('should not register if the version is a mismatch', function () {
     const logger1 = getMockLogger();
     const logger2 = getMockLogger();
 
@@ -92,7 +91,7 @@ describe('Global Utils', () => {
     const globalInstance = getGlobal('diag');
     assert.ok(globalInstance);
     // @ts-expect-error we are modifying internals for testing purposes here
-    _globalThis[Symbol.for(GLOBAL_API_SYMBOL_KEY)].version = '0.0.1';
+    globalThis[Symbol.for(GLOBAL_API_SYMBOL_KEY)].version = '0.0.1';
 
     assert.equal(false, api1.diag.setLogger(logger2)); // won't happen
 
@@ -102,7 +101,7 @@ describe('Global Utils', () => {
     sinon.assert.notCalled(logger2.warn);
   });
 
-  it('should debug log registrations', () => {
+  it('should debug log registrations', function () {
     const logger = getMockLogger();
     api1.diag.setLogger(logger, DiagLogLevel.DEBUG);
 
@@ -114,7 +113,7 @@ describe('Global Utils', () => {
     sinon.assert.calledTwice(logger.debug);
   });
 
-  it('should log an error if there is a duplicate registration', () => {
+  it('should log an error if there is a duplicate registration', function () {
     const logger = getMockLogger();
     api1.diag.setLogger(logger);
 
@@ -130,7 +129,7 @@ describe('Global Utils', () => {
     );
   });
 
-  it('should allow duplicate registration of the diag logger', () => {
+  it('should allow duplicate registration of the diag logger', function () {
     const logger1 = getMockLogger();
     const logger2 = getMockLogger();
 

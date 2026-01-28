@@ -24,10 +24,15 @@ import { InstrumentationScope } from '@opentelemetry/core';
 import { Resource as ISdkResource } from '@opentelemetry/resources';
 
 export function createResource(resource: ISdkResource): Resource {
-  return {
+  const result: Resource = {
     attributes: toAttributes(resource.attributes),
     droppedAttributesCount: 0,
   };
+
+  const schemaUrl = resource.schemaUrl;
+  if (schemaUrl && schemaUrl !== '') result.schemaUrl = schemaUrl;
+
+  return result;
 }
 
 export function createInstrumentationScope(
@@ -59,16 +64,24 @@ export function toAnyValue(value: unknown): IAnyValue {
   }
   if (t === 'boolean') return { boolValue: value as boolean };
   if (value instanceof Uint8Array) return { bytesValue: value };
-  if (Array.isArray(value))
-    return { arrayValue: { values: value.map(toAnyValue) } };
-  if (t === 'object' && value != null)
-    return {
-      kvlistValue: {
-        values: Object.entries(value as object).map(([k, v]) =>
-          toKeyValue(k, v)
-        ),
-      },
-    };
+  if (Array.isArray(value)) {
+    const values: IAnyValue[] = new Array(value.length);
+    for (let i = 0; i < value.length; i++) {
+      values[i] = toAnyValue(value[i]);
+    }
+    return { arrayValue: { values } };
+  }
+  if (t === 'object' && value != null) {
+    const keys = Object.keys(value);
+    const values: IKeyValue[] = new Array(keys.length);
+    for (let i = 0; i < keys.length; i++) {
+      values[i] = {
+        key: keys[i],
+        value: toAnyValue((value as Record<string, unknown>)[keys[i]]),
+      };
+    }
+    return { kvlistValue: { values } };
+  }
 
   return {};
 }

@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-import { ExportResult, hrTimeToMicroseconds } from '@opentelemetry/core';
-import { ExportResultCode } from '@opentelemetry/core';
+import {
+  ExportResultCode,
+  ExportResult,
+  hrTimeToMicroseconds,
+} from '@opentelemetry/core';
 
 import type { ReadableLogRecord } from './ReadableLogRecord';
 import type { LogRecordExporter } from './LogRecordExporter';
@@ -64,6 +67,7 @@ export class ConsoleLogRecordExporter implements LogRecordExporter {
       traceFlags: logRecord.spanContext?.traceFlags,
       severityText: logRecord.severityText,
       severityNumber: logRecord.severityNumber,
+      eventName: logRecord.eventName,
       body: logRecord.body,
       attributes: logRecord.attributes,
     };

@@ -17,11 +17,11 @@ import { OtlpHttpConfiguration } from './configuration/otlp-http-configuration';
 import { ISerializer } from '@opentelemetry/otlp-transformer';
 import { IOtlpExportDelegate } from './otlp-export-delegate';
 import { createRetryingTransport } from './retrying-transport';
-import { createXhrTransport } from './transport/xhr-transport';
 import { createSendBeaconTransport } from './transport/send-beacon-transport';
 import { createOtlpNetworkExportDelegate } from './otlp-network-export-delegate';
+import { createFetchTransport } from './transport/fetch-transport';
 
-export function createOtlpXhrExportDelegate<Internal, Response>(
+export function createOtlpFetchExportDelegate<Internal, Response>(
   options: OtlpHttpConfiguration,
   serializer: ISerializer<Internal, Response>
 ): IOtlpExportDelegate<Internal> {
@@ -29,7 +29,7 @@ export function createOtlpXhrExportDelegate<Internal, Response>(
     options,
     serializer,
     createRetryingTransport({
-      transport: createXhrTransport(options),
+      transport: createFetchTransport(options),
     })
   );
 }
@@ -44,7 +44,7 @@ export function createOtlpSendBeaconExportDelegate<Internal, Response>(
     createRetryingTransport({
       transport: createSendBeaconTransport({
         url: options.url,
-        blobType: options.headers()['Content-Type'],
+        headers: options.headers,
       }),
     })
   );
